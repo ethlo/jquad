@@ -1,5 +1,8 @@
 BSD 3-Clause License
 
+* Original project in C, copyright yinqiwen. (https://github.com/yinqiwen/geohash-int)
+* Forked project as Python module, copyright CartoDB (https://github.com/CartoDB/python-quadkey)
+
 Copyright (c) 2018, Morten Haraldsen
 All rights reserved.
 
