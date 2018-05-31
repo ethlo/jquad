@@ -1,11 +1,9 @@
 package com.ethlo.quadkey;
 
-import org.junit.Test;
-
-import com.ethlo.quadkey.QuadKey.Coordinate;
-import com.ethlo.quadkey.QuadKey.Point;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.Ignore;
+import org.junit.Test;
 
 public class QuadKeyTest
 {
@@ -54,5 +52,38 @@ public class QuadKeyTest
     {
         final Coordinate c = QuadKey.quadInt2WebMercator(quadInt);
         assertThat(c).isEqualTo(new Coordinate(-8234253.610862966, 4976664.81813745));
+    }
+    
+    @Test
+    public void testCoordinate2Point90_90()
+    {
+        final Point p = QuadKey.coordinate2Point(new Coordinate(90.0, 90.0), QuadKey.MAX_ZOOM);
+        assertThat(p).isEqualTo(new Point(1610612736, 2147483647));
+    }
+    
+    @Ignore
+    @Test
+    public void boundingBox()
+    {
+        final Coordinate coordinate = new Coordinate(40.75896, -73.985195);
+        System.out.println(coordinate);
+        
+        final long quadInt = QuadKey.coordinate2quadInt(coordinate);
+        //final BoundingRectangle bbox = QuadKey.tile2bbox(quadInt, QuadKey.MAX_ZOOM);
+        //System.out.println(bbox);
+        
+        final int distanceInMeters = 30;
+        
+        final BoundingRectangle rect = QuadKey.tile2bbox(quadInt, QuadKey.MAX_ZOOM);
+        System.out.println(rect);
+        
+        System.out.println("x: " + QuadKey.coordinate2quadInt(coordinate));
+        final long a = QuadKey.coordinate2quadInt(rect.getLower());
+        final long b = QuadKey.coordinate2quadInt(rect.getUpper());
+        System.out.println("a: " + a);
+        System.out.println("b: " + b);
+        //System.out.println(quadInt - range.getLower());
+        //System.out.println(range.getUpper() - quadInt);
+        
     }
 }

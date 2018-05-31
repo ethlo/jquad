@@ -1,7 +1,5 @@
 package com.ethlo.quadkey;
 
-import java.util.Objects;
-
 public class QuadKey
 {
     public static final int MAX_ZOOM = 31;
@@ -19,8 +17,10 @@ public class QuadKey
     private static final double INV_XY_SCALE = 1.0 / XY_SCALE;
     private static final double WM_RANGE = 2.0 * Math.PI * WEBMERCATOR_R;
     private static final double INV_WM_RANGE = 1.0 / WM_RANGE;
-    
-    private QuadKey(){}
+
+    private QuadKey()
+    {
+    }
 
     public static long xy2quadint(Point point)
     {
@@ -29,8 +29,8 @@ public class QuadKey
         final long[] s =
         { 1, 2, 4, 8, 16 };
 
-        long x = (point.x | (point.x << s[4])) & b[4];
-        long y = (point.y | (point.y << s[4])) & b[4];
+        long x = (point.getX() | (point.getX() << s[4])) & b[4];
+        long y = (point.getY() | (point.getY() << s[4])) & b[4];
 
         x = (x | (x << s[3])) & b[3];
         y = (y | (y << s[3])) & b[3];
@@ -80,16 +80,16 @@ public class QuadKey
 
     public static Point coordinate2Point(Coordinate coordinate, int zoom)
     {
-        final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.lon));
-        final double lat = Math.min(MAX_LATITUDE, Math.max(MIN_LATITUDE, coordinate.lat));
+        final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.getLon()));
+        final double lat = Math.min(MAX_LATITUDE, Math.max(MIN_LATITUDE, coordinate.getLat()));
 
         double fx = (lon + 180.0) / 360.0;
         double sinlat = Math.sin(lat * Math.PI / 180.0);
         double fy = 0.5 - Math.log((1 + sinlat) / (1 - sinlat)) / (4 * Math.PI);
 
         long mapsize = (1 << zoom) & 0xFFFFFFFFL;
-        long x = ((long) Math.floor(fx * mapsize));
-        long y = ((long) Math.floor(fy * mapsize));
+        long x = ((long) Math.floor(fx * mapsize)) & 0xFFFFFFFFL;
+        long y = ((long) Math.floor(fy * mapsize)) & 0xFFFFFFFFL;
         x = Math.min(mapsize - 1, Math.max(0, x));
         y = Math.min(mapsize - 1, Math.max(0, y));
         return new Point(x, y);
@@ -97,8 +97,8 @@ public class QuadKey
 
     public static Coordinate point2WebMercator(Point p)
     {
-        final double x = (p.x * INV_XY_SCALE - 0.5) * WM_RANGE;
-        final double y = (0.5 - p.y * INV_XY_SCALE) * WM_RANGE;
+        final double x = (p.getX() * INV_XY_SCALE - 0.5) * WM_RANGE;
+        final double y = (0.5 - p.getY() * INV_XY_SCALE) * WM_RANGE;
         return new Coordinate(x, y);
     }
 
@@ -110,9 +110,9 @@ public class QuadKey
 
     public static Point webMercator2Point(Coordinate coordinate)
     {
-        final double x = (coordinate.lat * INV_WM_RANGE + 0.5) * XY_SCALE;
-        final double y = (0.5 - coordinate.lon * INV_WM_RANGE) * XY_SCALE;
-        return new Point((long)x, (long)y);
+        final double x = (coordinate.getLat() * INV_WM_RANGE + 0.5) * XY_SCALE;
+        final double y = (0.5 - coordinate.getLon() * INV_WM_RANGE) * XY_SCALE;
+        return new Point((long) x, (long) y);
     }
 
     public static long coordinate2quadInt(Coordinate coordinate)
@@ -121,93 +121,41 @@ public class QuadKey
         return xy2quadint(point);
     }
 
-    public static class Point
+    public static BoundingRectangle tile2bbox(long quadint, int zoom)
     {
-        private final long x;
-        private final long y;
+        final Range<Coordinate> r = tile2bboxScaled(1.0, 1.0, -0.5, -0.5, quadint, zoom);
 
-        public Point(long x, long y)
-        {
-            this.x = x;
-            this.y = y;
-        }
+        final double xMin = r.getLower().getLat();
+        final double yMin = r.getLower().getLon();
+        final double xMmax = r.getUpper().getLat();
+        final double yMax = r.getUpper().getLon();
 
-        public long getX()
-        {
-            return x;
-        }
+        double lonMin = 360.0 * xMin;
+        double lonMax = 360.0 * xMmax;
 
-        public long getY()
-        {
-            return y;
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(x, y);
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (obj instanceof Point)
-            {
-                final Point b = (Point) obj;
-                return Objects.equals(x, b.x) && Objects.equals(y, b.y);
-            }
-            return false;
-        }
-
-        @Override
-        public String toString()
-        {
-            return "Point [x=" + x + ", y=" + y + "]";
-        }
+        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
+        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
+        return new BoundingRectangle(new Coordinate(latMin, lonMin), new Coordinate(latMax, lonMax));
     }
 
-    public static class Coordinate
+    public static Range<Coordinate> tile2bboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadint, int zoom)
     {
-        private final double lat;
-        private final double lon;
+        int zeroBits = MAX_ZOOM - zoom;
+        final Point p = quadInt2Point(quadint);
+        long x = p.getX();
+        long y = p.getY();
+        x >>= zeroBits;
+        y >>= zeroBits;
+        double xMin = offsetX + (x * 1.0 / (1L << zoom)) * scaleX;
+        double xMax = offsetX + ((x + 1) * 1.0 / (1L << zoom)) * scaleX;
+        double yMin = offsetY + ((y + 1) * 1.0 / (1L << zoom)) * scaleY;
+        double yMax = offsetY + (y * 1.0 / (1L << zoom)) * scaleY;
+        return new Range<>(new Coordinate(xMin, yMin), new Coordinate(xMax, yMax));
+    }
 
-        public Coordinate(double lat, double lon)
-        {
-            this.lat = lat;
-            this.lon = lon;
-        }
-
-        public double getLat()
-        {
-            return lat;
-        }
-
-        public double getL()
-        {
-            return lon;
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(lat, lon);
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (obj instanceof Coordinate)
-            {
-                final Coordinate b = (Coordinate) obj;
-                return Objects.equals(lat, b.lat) && Objects.equals(lon, b.lon);
-            }
-            return false;
-        }
-
-        @Override
-        public String toString()
-        {
-            return "Coordinate [lat=" + lat + ", lon=" + lon + "]";
-        }
+    public static QuadKeyRange quadIntRange(Coordinate coordinate, int distanceInMeters)
+    {
+        final BoundingRectangle rect = Geoutil.getBoundingRectangle(coordinate, distanceInMeters);
+        return new QuadKeyRange(coordinate2quadInt(rect.getLower()), coordinate2quadInt(rect.getUpper()));
     }
 }
