@@ -78,6 +78,46 @@ public class QuadKey
         return new Point(x, y);
     }
 
+    /**
+     *
+     * decimal
+     * places   degrees          max-distance
+     * -------  -------          --------
+     * 0        1                111  km
+     * 1        0.1              11.1 km
+     * 2        0.01             1.11 km
+     * 3        0.001            111  m
+     * 4        0.0001           11.1 m
+     * 5        0.00001          1.11 m
+     * 6        0.000001         11.1 cm
+     * 7        0.0000001        1.11 cm
+     * 8        0.00000001       1.11 mm
+     *
+     * @param quadInt
+     * @return
+     */
+    public static Coordinate quadInt2Coordinate(long quadInt)
+    {
+        int zeroBits = 0;
+        final Point p = quadInt2Point(quadInt);
+        long x = p.getX();
+        long y = p.getY();
+        x >>= zeroBits;
+        y >>= zeroBits;
+        double xMin = -0.5 + (x * 1.0 / (1L << MAX_ZOOM));
+        double xMax = -0.5 + ((x + 1) * 1.0 / (1L << MAX_ZOOM));
+        double yMin = -0.5 + ((y + 1) * 1.0 / (1L << MAX_ZOOM));
+        double yMax = -0.5 + (y * 1.0 / (1L << MAX_ZOOM));
+
+        double lonMin = 360.0 * xMin;
+        double lonMax = 360.0 * xMax;
+
+        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
+        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
+
+        return new Coordinate((latMin + latMax) / 2D, (lonMin + lonMax)/ 2D);
+    }
+
     public static Point coordinate2Point(Coordinate coordinate, int zoom)
     {
         final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.getLon()));

@@ -9,6 +9,12 @@ public class Coordinate
 
     public Coordinate(double lat, double lon)
     {
+        Assert.isTrue(lat <= 90.0, "Latitude must be less or equal to 180.0, was " + lat);
+        Assert.isTrue(lat >= -90.0, "Latitude must be greater or equal to -180.0, was " + lat);
+        Assert.isTrue(lon <= 180.0, "Longitude must be less or equal to 90.0, was " + lon);
+        Assert.isTrue(lon >= -180.0, "Longitude must be greater or equal to -90.0, was " + lon);
+
+
         this.lat = lat;
         this.lon = lon;
     }
