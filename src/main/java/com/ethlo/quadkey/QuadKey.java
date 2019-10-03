@@ -125,12 +125,9 @@ public class QuadKey
      */
     private static Coordinate quadInt2Coordinate(long quadInt, int zoom)
     {
-        int zeroBits = 0;
         final Point p = quadInt2Point(quadInt);
         long x = p.getX();
         long y = p.getY();
-        x >>= zeroBits;
-        y >>= zeroBits;
         double xMin = -0.5 + (x * 1.0 / (1L << zoom));
         double xMax = -0.5 + ((x + 1) * 1.0 / (1L << zoom));
         double yMin = -0.5 + ((y + 1) * 1.0 / (1L << zoom));
