@@ -2,7 +2,8 @@ package com.ethlo.quadkey;
 
 import java.util.Objects;
 
-public class QuadKey {
+public class QuadKey
+{
     public static final int MAX_ZOOM = 31;
     private static final double MAX_LONGITUDE = 180.0;
 
@@ -15,27 +16,32 @@ public class QuadKey {
     private long quadInt;
     private String quadKey;
 
-    public QuadKey(Coordinate coordinate, int zoom) {
+    public QuadKey(Coordinate coordinate, int zoom)
+    {
         this.zoom = zoom;
         this.quadInt = coordinate2QuadInt(coordinate, zoom);
         this.quadKey = coordinate2QuadKey(coordinate, zoom);
     }
 
-    public QuadKey(long quadInt) {
+    public QuadKey(long quadInt)
+    {
         this.quadInt = quadInt;
         this.quadKey = quadInt2String(quadInt, zoom);
     }
 
-    public QuadKey(String quadKey) {
+    public QuadKey(String quadKey)
+    {
         this.quadInt = quadKey2QuadInt(quadKey);
         this.quadKey = quadKey;
     }
 
-    public int getZoom() {
+    public int getZoom()
+    {
         return zoom;
     }
 
-    public void setZoom(int zoom) {
+    public void setZoom(int zoom)
+    {
         if (zoom <= 0) throw new IllegalArgumentException("Zoom level invalid.");
         if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
         this.zoom = zoom;
@@ -43,42 +49,51 @@ public class QuadKey {
         this.quadInt = quadKey2QuadInt(quadKey);
     }
 
-    public long getAsLong() {
+    public long getAsLong()
+    {
         return quadInt;
     }
 
-    public String getAsString() {
+    public String getAsString()
+    {
         return this.toString();
     }
 
-    public Coordinate getAsCoordinate() {
+    public Coordinate getAsCoordinate()
+    {
         return quadInt2Coordinate(quadInt, zoom);
     }
 
-    public BoundingRectangle getAsBoundingBox() {
+    public BoundingRectangle getAsBoundingBox()
+    {
         return tile2Bbox(quadInt, getZoom());
     }
 
-    public BoundingRectangle getAsBoundingBox(int zoom) {
+    public BoundingRectangle getAsBoundingBox(int zoom)
+    {
         if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
         return tile2Bbox(quadInt, zoom);
     }
 
-    public boolean contains(Coordinate coordinate) {
+    public boolean contains(Coordinate coordinate)
+    {
         return getAsBoundingBox().contains(coordinate);
     }
 
-    public boolean isParentOf(QuadKey other) {
+    public boolean isParentOf(QuadKey other)
+    {
         return other.getAsString().startsWith(quadKey);
     }
 
     @Override
-    public String toString() {
+    public String toString()
+    {
         return quadKey;
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(Object o)
+    {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         QuadKey quadKey = (QuadKey) o;
@@ -86,7 +101,8 @@ public class QuadKey {
     }
 
     @Override
-    public int hashCode() {
+    public int hashCode()
+    {
         return Objects.hash(quadInt);
     }
 
@@ -107,7 +123,8 @@ public class QuadKey {
      * @param quadInt
      * @return
      */
-    private static Coordinate quadInt2Coordinate(long quadInt, int zoom) {
+    private static Coordinate quadInt2Coordinate(long quadInt, int zoom)
+    {
         int zeroBits = 0;
         final Point p = quadInt2Point(quadInt);
         long x = p.getX();
@@ -128,16 +145,19 @@ public class QuadKey {
         return new Coordinate((latMin + latMax) / 2D, (lonMin + lonMax) / 2D);
     }
 
-    private static String coordinate2QuadKey(Coordinate coordinate, int zoom) {
+    private static String coordinate2QuadKey(Coordinate coordinate, int zoom)
+    {
         return quadInt2String(pointToQuadInt(coordinate2Point(coordinate, zoom)), zoom);
     }
 
-    private static long coordinate2QuadInt(Coordinate coordinate, int zoom) {
+    private static long coordinate2QuadInt(Coordinate coordinate, int zoom)
+    {
         final Point point = coordinate2Point(coordinate, zoom);
         return pointToQuadInt(point);
     }
 
-    private static BoundingRectangle tile2Bbox(long quadInt, int zoom) {
+    private static BoundingRectangle tile2Bbox(long quadInt, int zoom)
+    {
         final Range<Coordinate> r = tile2BboxScaled(1.0, 1.0, -0.5, -0.5, quadInt, zoom);
 
         final double xMin = r.getLower().getLat();
@@ -154,27 +174,32 @@ public class QuadKey {
     }
 
 
-    private static String quadInt2String(long quadInt, int zoom) {
+    private static String quadInt2String(long quadInt, int zoom)
+    {
         StringBuilder str = new StringBuilder();
         int n = zoom * 2;
-        for (int i = 2; i < n + 2; i += 2) {
-            long charCode = (quadInt >> (n-i)) & 0b11;
+        for (int i = 2; i < n + 2; i += 2)
+        {
+            long charCode = (quadInt >> (n - i)) & 0b11;
             str.append(charCode);
         }
         return str.toString();
     }
 
-    private static long quadKey2QuadInt(String quadKey) {
+    private static long quadKey2QuadInt(String quadKey)
+    {
         long quadInt = 0;
         byte[] chars = quadKey.getBytes();
-        for (int i = 0; i < chars.length; i++) {
+        for (int i = 0; i < chars.length; i++)
+        {
             int digit = chars[i] - 48;
             quadInt = (quadInt << 2) | digit;
         }
         return quadInt;
     }
 
-    private static long pointToQuadInt(Point point) {
+    private static long pointToQuadInt(Point point)
+    {
         final long[] b =
             {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL};
         final long[] s =
@@ -198,7 +223,8 @@ public class QuadKey {
         return x | (y << 1);
     }
 
-    private static Point quadInt2Point(long quadInt) {
+    private static Point quadInt2Point(long quadInt)
+    {
         final long[] b =
             {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL};
         final int[] s =
@@ -228,7 +254,8 @@ public class QuadKey {
         return new Point(x, y);
     }
 
-    private static Point coordinate2Point(Coordinate coordinate, int zoom) {
+    private static Point coordinate2Point(Coordinate coordinate, int zoom)
+    {
         final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.getLon()));
         final double lat = Math.min(MAX_LATITUDE, Math.max(MIN_LATITUDE, coordinate.getLat()));
 
@@ -244,7 +271,8 @@ public class QuadKey {
         return new Point(x, y);
     }
 
-    private static Range<Coordinate> tile2BboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadInt, int zoom) {
+    private static Range<Coordinate> tile2BboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadInt, int zoom)
+    {
         final Point p = quadInt2Point(quadInt);
         long x = p.getX();
         long y = p.getY();

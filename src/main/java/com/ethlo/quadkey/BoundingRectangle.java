@@ -2,25 +2,30 @@ package com.ethlo.quadkey;
 
 import java.util.Objects;
 
-public class BoundingRectangle {
+public class BoundingRectangle
+{
     private final Coordinate lowerLeft;
     private final Coordinate upperRight;
 
-    public BoundingRectangle(Coordinate lowerRight, Coordinate upperLeft) {
+    public BoundingRectangle(Coordinate lowerRight, Coordinate upperLeft)
+    {
         this.lowerLeft = lowerRight;
         this.upperRight = upperLeft;
     }
 
-    public Coordinate getLowerLeft() {
+    public Coordinate getLowerLeft()
+    {
         return lowerLeft;
     }
 
-    public Coordinate getUpperRight() {
+    public Coordinate getUpperRight()
+    {
         return upperRight;
     }
 
     /* Todo: Make sure this holds for all points on the sphere */
-    public boolean contains(Coordinate coordinate) {
+    public boolean contains(Coordinate coordinate)
+    {
         return lowerLeft.getLat() <= coordinate.getLat() &&
             lowerLeft.getLon() <= coordinate.getLon() &&
             upperRight.getLat() >= coordinate.getLat() &&
@@ -28,17 +33,21 @@ public class BoundingRectangle {
     }
 
     @Override
-    public int hashCode() {
+    public int hashCode()
+    {
         return Objects.hash(lowerLeft, upperRight);
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (obj == this) {
+    public boolean equals(Object obj)
+    {
+        if (obj == this)
+        {
             return true;
         }
 
-        if (obj instanceof BoundingRectangle) {
+        if (obj instanceof BoundingRectangle)
+        {
             final BoundingRectangle b = (BoundingRectangle) obj;
             return Objects.equals(lowerLeft, b.lowerLeft) && Objects.equals(upperRight, b.upperRight);
         }
@@ -47,7 +56,8 @@ public class BoundingRectangle {
     }
 
     @Override
-    public String toString() {
+    public String toString()
+    {
         return "BoundingRectangle [lowerLeft=" + lowerLeft + ", upperRight=" + upperRight + "]";
     }
 }
