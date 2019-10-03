@@ -1,100 +1,110 @@
 package com.ethlo.quadkey;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.assertj.core.data.Percentage;
-import org.junit.Ignore;
 import org.junit.Test;
 
-public class QuadKeyTest
-{
-    private final double lon = -73.969558715820312;
-    private final double lat = 40.757678985595703;
-    private final Coordinate coordinate = new Coordinate(lat, lon);
-    private final Point point = new Point(632496219, 807059307);
-    private final long quadInt = 1013670064444553679L;
-    
-    @Test
-    public void coordinate2Point()
-    {
-        final Point p = QuadKey.coordinate2Point(coordinate, QuadKey.MAX_ZOOM);
-        assertThat(p).isEqualTo(point);
-    }
+public class QuadKeyTest {
+    private final Coordinate coordinate1 = new Coordinate(40.757678985595703, -73.969558715820312);
+    private final Coordinate coordinate2 = new Coordinate(-44.902066, 168.091782);
+
+    private final long quadInt1 = 1013670064444553679L;
 
     @Test
-    public void quadInt2Coordinate()
-    {
-        final Coordinate coord = QuadKey.quadInt2Coordinate(quadInt);
+    public void quadInt2Coordinate() {
+        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
+        final Coordinate coord = k.getAsCoordinate();
 
         final Percentage deviation = Percentage.withPercentage(0.000001D);
-        assertThat(coord.getLat()).isCloseTo(coordinate.getLat(), deviation);
-        assertThat(coord.getLon()).isCloseTo(coordinate.getLon(), deviation);
+        assertThat(coord.getLat()).isCloseTo(coordinate1.getLat(), deviation);
+        assertThat(coord.getLon()).isCloseTo(coordinate1.getLon(), deviation);
     }
-    
+
     @Test
-    public void coordinate2quadInt()
-    {
-        final long l = QuadKey.coordinate2quadInt(coordinate);
-        assertThat(l).isEqualTo(quadInt);
+    public void coordinate2QuadInt() {
+        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
+        assertThat(k.getAsLong()).isEqualTo(quadInt1);
     }
-    
+
+
     @Test
-    public void quadInt2Point()
-    {
-        final Point p = QuadKey.quadInt2Point(quadInt);
-        assertThat(p).isEqualTo(point);
+    public void coordinate2QuadKey() {
+        QuadKey k = new QuadKey(coordinate1, 16);
+        String quadKey1 = "0320101101320312032222203213033";
+        assertThat(k.getAsString()).isEqualTo(quadKey1.substring(0, 16));
     }
-    
+
+
     @Test
-    public void point2WebMercator()
-    {
-        //final Coordinate c = QuadKey.point2WebMercator(new Point(123456, 789));
-        //assertThat(c).isEqualTo(new Coordinate(-20035204.482983585, 20037493.618957378));
+    public void quadKey2QuadInt() {
+        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
+        assertThat(k.getAsLong()).isEqualTo(quadInt1);
     }
-    
+
     @Test
-    public void webMercator2Point()
-    {
-        //assertThat(QuadKey.webMercator2Point(new Coordinate(-20035204.482983585, 20037493.618957378))).isEqualTo(new Point(123456, 789));
+    public void containsChild() {
+        QuadKey k1 = new QuadKey(coordinate1, 10);
+        QuadKey k2 = new QuadKey(coordinate1, 14);
+        assertTrue(k1.contains(k2.getAsCoordinate()));
     }
-    
+
     @Test
-    public void quadInt2WebMercator()
-    {
-        //final Coordinate c = QuadKey.quadInt2WebMercator(quadInt);
-        //assertThat(c).isEqualTo(new Coordinate(-8234253.610862966, 4976664.81813745));
+    public void isParent() {
+        QuadKey k1 = new QuadKey(coordinate1, 10);
+        QuadKey k2 = new QuadKey(coordinate1, 11);
+        assertTrue(k1.isParentOf(k2));
     }
-    
+
     @Test
-    public void testCoordinate2Point90_90()
-    {
-        final Point p = QuadKey.coordinate2Point(new Coordinate(90.0, 90.0), QuadKey.MAX_ZOOM);
-        assertThat(p).isEqualTo(new Point(1610612736, 2147483647));
+    public void setZoom() {
+        QuadKey k1 = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
+        QuadKey k2 = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
+        k2.setZoom(10);
+        assertThat(k2.getAsString().length()).isEqualTo(10);
+        assertThat(k1).isNotEqualTo(k2);
     }
-    
-    @Ignore
+
     @Test
-    public void boundingBox()
-    {
-        final Coordinate coordinate = new Coordinate(40.75896, -73.985195);
-        System.out.println(coordinate);
-        
-        final long quadInt = QuadKey.coordinate2quadInt(coordinate);
-        //final BoundingRectangle bbox = QuadKey.tile2bbox(quadInt, QuadKey.MAX_ZOOM);
-        //System.out.println(bbox);
-        
-        final int distanceInMeters = 30;
-        
-        final BoundingRectangle rect = QuadKey.tile2bbox(quadInt, QuadKey.MAX_ZOOM);
-        System.out.println(rect);
-        
-        System.out.println("x: " + QuadKey.coordinate2quadInt(coordinate));
-        final long a = QuadKey.coordinate2quadInt(rect.getLower());
-        final long b = QuadKey.coordinate2quadInt(rect.getUpper());
-        System.out.println("a: " + a);
-        System.out.println("b: " + b);
-        //System.out.println(quadInt - range.getLower());
-        //System.out.println(range.getUpper() - quadInt);
-        
+    public void setInvalidZoom() {
+        QuadKey k = new QuadKey(coordinate1, 10);
+        try {
+            k.setZoom(11);
+            fail("Exception not thrown");
+        } catch (IllegalArgumentException e) {
+            assertTrue(true);
+        }
     }
+
+    @Test
+    public void quadKeyContains1() {
+        final Coordinate other = new Coordinate(40.756800, -73.970411);
+        QuadKey k = new QuadKey(coordinate1, 16);
+        assertTrue(k.contains(other));
+    }
+
+    @Test
+    public void quadKeyNotContains1() {
+        final Coordinate other = new Coordinate(40.759740, -73.965454);
+        QuadKey k = new QuadKey(coordinate1, 16);
+        assertFalse(k.contains(other));
+    }
+
+    @Test
+    public void quadKeyContains2() {
+        final Coordinate other = new Coordinate(-44.900874, 168.094146);
+        QuadKey k = new QuadKey(coordinate2, 16);
+        assertTrue(k.contains(other));
+    }
+
+    @Test
+    public void quadKeyNotContains2() {
+        final Coordinate other = new Coordinate(-44.902303, 168.098953);
+        QuadKey k = new QuadKey(coordinate2, 16);
+        assertFalse(k.contains(other));
+    }
+
 }

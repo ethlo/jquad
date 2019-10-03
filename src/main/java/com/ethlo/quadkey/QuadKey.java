@@ -1,7 +1,8 @@
 package com.ethlo.quadkey;
 
-public class QuadKey
-{
+import java.util.Objects;
+
+public class QuadKey {
     public static final int MAX_ZOOM = 31;
     private static final double MAX_LONGITUDE = 180.0;
 
@@ -10,24 +11,174 @@ public class QuadKey
     private static final double MIN_LONGITUDE = -MAX_LONGITUDE;
     private static final double MIN_LATITUDE = -MAX_LATITUDE;
 
-    private static final double WEBMERCATOR_R = 6378137.0;
+    private int zoom;
+    private long quadInt;
+    private String quadKey;
 
-    /* (double)((uint32)1 << MAX_ZOOM) */
-    private static final double XY_SCALE = 2147483648.0;
-    private static final double INV_XY_SCALE = 1.0 / XY_SCALE;
-    private static final double WM_RANGE = 2.0 * Math.PI * WEBMERCATOR_R;
-    private static final double INV_WM_RANGE = 1.0 / WM_RANGE;
-
-    private QuadKey()
-    {
+    public QuadKey(Coordinate coordinate, int zoom) {
+        this.zoom = zoom;
+        this.quadInt = coordinate2QuadInt(coordinate, zoom);
+        this.quadKey = coordinate2QuadKey(coordinate, zoom);
     }
 
-    public static long xy2quadint(Point point)
-    {
+    public QuadKey(long quadInt) {
+        this.quadInt = quadInt;
+        this.quadKey = quadInt2String(quadInt, zoom);
+    }
+
+    public QuadKey(String quadKey) {
+        this.quadInt = quadKey2QuadInt(quadKey);
+        this.quadKey = quadKey;
+    }
+
+    public int getZoom() {
+        return zoom;
+    }
+
+    public void setZoom(int zoom) {
+        if (zoom <= 0) throw new IllegalArgumentException("Zoom level invalid.");
+        if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
+        this.zoom = zoom;
+        this.quadKey = quadKey.substring(0, zoom);
+        this.quadInt = quadKey2QuadInt(quadKey);
+    }
+
+    public long getAsLong() {
+        return quadInt;
+    }
+
+    public String getAsString() {
+        return this.toString();
+    }
+
+    public Coordinate getAsCoordinate() {
+        return quadInt2Coordinate(quadInt, zoom);
+    }
+
+    public BoundingRectangle getAsBoundingBox() {
+        return tile2Bbox(quadInt, getZoom());
+    }
+
+    public BoundingRectangle getAsBoundingBox(int zoom) {
+        if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
+        return tile2Bbox(quadInt, zoom);
+    }
+
+    public boolean contains(Coordinate coordinate) {
+        return getAsBoundingBox().contains(coordinate);
+    }
+
+    public boolean isParentOf(QuadKey other) {
+        return other.getAsString().startsWith(quadKey);
+    }
+
+    @Override
+    public String toString() {
+        return quadKey;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        QuadKey quadKey = (QuadKey) o;
+        return quadInt == quadKey.quadInt;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(quadInt);
+    }
+
+    /**
+     * decimal
+     * places   degrees          max-distance
+     * -------  -------          --------
+     * 0        1                111  km
+     * 1        0.1              11.1 km
+     * 2        0.01             1.11 km
+     * 3        0.001            111  m
+     * 4        0.0001           11.1 m
+     * 5        0.00001          1.11 m
+     * 6        0.000001         11.1 cm
+     * 7        0.0000001        1.11 cm
+     * 8        0.00000001       1.11 mm
+     *
+     * @param quadInt
+     * @return
+     */
+    private static Coordinate quadInt2Coordinate(long quadInt, int zoom) {
+        int zeroBits = 0;
+        final Point p = quadInt2Point(quadInt);
+        long x = p.getX();
+        long y = p.getY();
+        x >>= zeroBits;
+        y >>= zeroBits;
+        double xMin = -0.5 + (x * 1.0 / (1L << zoom));
+        double xMax = -0.5 + ((x + 1) * 1.0 / (1L << zoom));
+        double yMin = -0.5 + ((y + 1) * 1.0 / (1L << zoom));
+        double yMax = -0.5 + (y * 1.0 / (1L << zoom));
+
+        double lonMin = 360.0 * xMin;
+        double lonMax = 360.0 * xMax;
+
+        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
+        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
+
+        return new Coordinate((latMin + latMax) / 2D, (lonMin + lonMax) / 2D);
+    }
+
+    private static String coordinate2QuadKey(Coordinate coordinate, int zoom) {
+        return quadInt2String(pointToQuadInt(coordinate2Point(coordinate, zoom)), zoom);
+    }
+
+    private static long coordinate2QuadInt(Coordinate coordinate, int zoom) {
+        final Point point = coordinate2Point(coordinate, zoom);
+        return pointToQuadInt(point);
+    }
+
+    private static BoundingRectangle tile2Bbox(long quadInt, int zoom) {
+        final Range<Coordinate> r = tile2BboxScaled(1.0, 1.0, -0.5, -0.5, quadInt, zoom);
+
+        final double xMin = r.getLower().getLat();
+        final double yMin = r.getLower().getLon();
+        final double xMmax = r.getUpper().getLat();
+        final double yMax = r.getUpper().getLon();
+
+        double lonMin = 360.0 * xMin;
+        double lonMax = 360.0 * xMmax;
+
+        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
+        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
+        return new BoundingRectangle(new Coordinate(latMin, lonMin), new Coordinate(latMax, lonMax));
+    }
+
+
+    private static String quadInt2String(long quadInt, int zoom) {
+        StringBuilder str = new StringBuilder();
+        int n = zoom * 2;
+        for (int i = 2; i < n + 2; i += 2) {
+            long charCode = (quadInt >> (n-i)) & 0b11;
+            str.append(charCode);
+        }
+        return str.toString();
+    }
+
+    private static long quadKey2QuadInt(String quadKey) {
+        long quadInt = 0;
+        byte[] chars = quadKey.getBytes();
+        for (int i = 0; i < chars.length; i++) {
+            int digit = chars[i] - 48;
+            quadInt = (quadInt << 2) | digit;
+        }
+        return quadInt;
+    }
+
+    private static long pointToQuadInt(Point point) {
         final long[] b =
-        { 0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL };
+            {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL};
         final long[] s =
-        { 1, 2, 4, 8, 16 };
+            {1, 2, 4, 8, 16};
 
         long x = (point.getX() | (point.getX() << s[4])) & b[4];
         long y = (point.getY() | (point.getY() << s[4])) & b[4];
@@ -47,15 +198,14 @@ public class QuadKey
         return x | (y << 1);
     }
 
-    public static Point quadInt2Point(long quadint)
-    {
+    private static Point quadInt2Point(long quadInt) {
         final long[] b =
-        { 0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL };
+            {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL};
         final int[] s =
-        { 0, 1, 2, 4, 8, 16 };
+            {0, 1, 2, 4, 8, 16};
 
-        long x = quadint;
-        long y = quadint >> 1;
+        long x = quadInt;
+        long y = quadInt >> 1;
 
         x = (x | (x >> s[0])) & b[0];
         y = (y | (y >> s[0])) & b[0];
@@ -78,48 +228,7 @@ public class QuadKey
         return new Point(x, y);
     }
 
-    /**
-     *
-     * decimal
-     * places   degrees          max-distance
-     * -------  -------          --------
-     * 0        1                111  km
-     * 1        0.1              11.1 km
-     * 2        0.01             1.11 km
-     * 3        0.001            111  m
-     * 4        0.0001           11.1 m
-     * 5        0.00001          1.11 m
-     * 6        0.000001         11.1 cm
-     * 7        0.0000001        1.11 cm
-     * 8        0.00000001       1.11 mm
-     *
-     * @param quadInt
-     * @return
-     */
-    public static Coordinate quadInt2Coordinate(long quadInt)
-    {
-        int zeroBits = 0;
-        final Point p = quadInt2Point(quadInt);
-        long x = p.getX();
-        long y = p.getY();
-        x >>= zeroBits;
-        y >>= zeroBits;
-        double xMin = -0.5 + (x * 1.0 / (1L << MAX_ZOOM));
-        double xMax = -0.5 + ((x + 1) * 1.0 / (1L << MAX_ZOOM));
-        double yMin = -0.5 + ((y + 1) * 1.0 / (1L << MAX_ZOOM));
-        double yMax = -0.5 + (y * 1.0 / (1L << MAX_ZOOM));
-
-        double lonMin = 360.0 * xMin;
-        double lonMax = 360.0 * xMax;
-
-        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
-        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
-
-        return new Coordinate((latMin + latMax) / 2D, (lonMin + lonMax)/ 2D);
-    }
-
-    public static Point coordinate2Point(Coordinate coordinate, int zoom)
-    {
+    private static Point coordinate2Point(Coordinate coordinate, int zoom) {
         final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.getLon()));
         final double lat = Math.min(MAX_LATITUDE, Math.max(MIN_LATITUDE, coordinate.getLat()));
 
@@ -135,67 +244,14 @@ public class QuadKey
         return new Point(x, y);
     }
 
-    public static Coordinate point2WebMercator(Point p)
-    {
-        final double x = (p.getX() * INV_XY_SCALE - 0.5) * WM_RANGE;
-        final double y = (0.5 - p.getY() * INV_XY_SCALE) * WM_RANGE;
-        return new Coordinate(x, y);
-    }
-
-    public static Coordinate quadInt2WebMercator(long quadint)
-    {
-        final Point p = quadInt2Point(quadint);
-        return point2WebMercator(p);
-    }
-
-    public static Point webMercator2Point(Coordinate coordinate)
-    {
-        final double x = (coordinate.getLat() * INV_WM_RANGE + 0.5) * XY_SCALE;
-        final double y = (0.5 - coordinate.getLon() * INV_WM_RANGE) * XY_SCALE;
-        return new Point((long) x, (long) y);
-    }
-
-    public static long coordinate2quadInt(Coordinate coordinate)
-    {
-        final Point point = coordinate2Point(coordinate, MAX_ZOOM);
-        return xy2quadint(point);
-    }
-
-    public static BoundingRectangle tile2bbox(long quadint, int zoom)
-    {
-        final Range<Coordinate> r = tile2bboxScaled(1.0, 1.0, -0.5, -0.5, quadint, zoom);
-
-        final double xMin = r.getLower().getLat();
-        final double yMin = r.getLower().getLon();
-        final double xMmax = r.getUpper().getLat();
-        final double yMax = r.getUpper().getLon();
-
-        double lonMin = 360.0 * xMin;
-        double lonMax = 360.0 * xMmax;
-
-        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
-        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
-        return new BoundingRectangle(new Coordinate(latMin, lonMin), new Coordinate(latMax, lonMax));
-    }
-
-    public static Range<Coordinate> tile2bboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadint, int zoom)
-    {
-        int zeroBits = MAX_ZOOM - zoom;
-        final Point p = quadInt2Point(quadint);
+    private static Range<Coordinate> tile2BboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadInt, int zoom) {
+        final Point p = quadInt2Point(quadInt);
         long x = p.getX();
         long y = p.getY();
-        x >>= zeroBits;
-        y >>= zeroBits;
         double xMin = offsetX + (x * 1.0 / (1L << zoom)) * scaleX;
         double xMax = offsetX + ((x + 1) * 1.0 / (1L << zoom)) * scaleX;
         double yMin = offsetY + ((y + 1) * 1.0 / (1L << zoom)) * scaleY;
         double yMax = offsetY + (y * 1.0 / (1L << zoom)) * scaleY;
         return new Range<>(new Coordinate(xMin, yMin), new Coordinate(xMax, yMax));
-    }
-
-    public static QuadKeyRange quadIntRange(Coordinate coordinate, int distanceInMeters)
-    {
-        final BoundingRectangle rect = Geoutil.getBoundingRectangle(coordinate, distanceInMeters);
-        return new QuadKeyRange(coordinate2quadInt(rect.getLower()), coordinate2quadInt(rect.getUpper()));
     }
 }
