@@ -4,7 +4,7 @@ public class Geoutil
 {
     /**
      * Get bouding rectangle using Drupal Earth Algorithm
-     * 
+     *
      * @see https://www.rit.edu/drupal/api/drupal/sites%21all%21modules%21location%21earth.inc/7.54
      * @param lat
      * @param lng
@@ -23,7 +23,7 @@ public class Geoutil
 
     /**
      * Calculate latitude range based on earths radius at a given point
-     * 
+     *
      * @param latitude
      * @param longitude
      * @param distance
@@ -66,7 +66,7 @@ public class Geoutil
     private static Range<Double> earthLongitudeRange(double radianLat, double radianlng, double earthRadius, int distance)
     {
         final double radius = earthRadius * Math.cos(radianLat);
-        
+
         double angle;
         if (radius > 0)
         {

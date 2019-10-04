@@ -4,29 +4,38 @@ import java.util.Objects;
 
 public class BoundingRectangle
 {
-    private final Coordinate lower;
-    private final Coordinate upper;
+    private final Coordinate lowerLeft;
+    private final Coordinate upperRight;
 
-    public BoundingRectangle(Coordinate lower, Coordinate upper)
+    public BoundingRectangle(Coordinate lowerRight, Coordinate upperLeft)
     {
-        this.lower = lower;
-        this.upper = upper;
+        this.lowerLeft = lowerRight;
+        this.upperRight = upperLeft;
     }
 
-    public Coordinate getLower()
+    public Coordinate getLowerLeft()
     {
-        return lower;
+        return lowerLeft;
     }
 
-    public Coordinate getUpper()
+    public Coordinate getUpperRight()
     {
-        return upper;
+        return upperRight;
     }
-    
+
+    /* Todo: Make sure this holds for all points on the sphere */
+    public boolean contains(Coordinate coordinate)
+    {
+        return lowerLeft.getLat() <= coordinate.getLat() &&
+            lowerLeft.getLon() <= coordinate.getLon() &&
+            upperRight.getLat() >= coordinate.getLat() &&
+            upperRight.getLon() >= coordinate.getLon();
+    }
+
     @Override
     public int hashCode()
     {
-        return Objects.hash(lower, upper);
+        return Objects.hash(lowerLeft, upperRight);
     }
 
     @Override
@@ -36,19 +45,19 @@ public class BoundingRectangle
         {
             return true;
         }
-        
+
         if (obj instanceof BoundingRectangle)
         {
             final BoundingRectangle b = (BoundingRectangle) obj;
-            return Objects.equals(lower, b.lower) && Objects.equals(upper, b.upper);
+            return Objects.equals(lowerLeft, b.lowerLeft) && Objects.equals(upperRight, b.upperRight);
         }
-        
+
         return false;
     }
 
     @Override
     public String toString()
     {
-        return "BoundingRectangle [lower=" + lower + ", upper=" + upper + "]";
+        return "BoundingRectangle [lowerLeft=" + lowerLeft + ", upperRight=" + upperRight + "]";
     }
 }
