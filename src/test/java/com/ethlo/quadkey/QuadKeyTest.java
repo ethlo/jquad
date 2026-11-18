@@ -142,4 +142,57 @@ public class QuadKeyTest
         assertFalse(k.contains(other));
     }
 
+    @Test
+    public void fromLongWithZoom()
+    {
+        final QuadKey k = new QuadKey(coordinate1, 18);
+        final QuadKey copy = new QuadKey(k.getAsLong(), 18);
+        assertThat(copy.getZoom()).isEqualTo(18);
+        assertThat(copy.getAsString()).isEqualTo(k.getAsString());
+        assertThat(copy).isEqualTo(k);
+    }
+
+    @SuppressWarnings("deprecation")
+    @Test
+    public void fromLongAtMaxZoom()
+    {
+        final QuadKey k = new QuadKey(quadInt1);
+        assertThat(k.getZoom()).isEqualTo(QuadKey.MAX_ZOOM);
+        assertThat(k.getAsString()).isEqualTo(new QuadKey(coordinate1, QuadKey.MAX_ZOOM).getAsString());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void fromLongTooManyLevels()
+    {
+        new QuadKey(quadInt1, 18);
+    }
+
+    @Test
+    public void fromString()
+    {
+        final QuadKey k = new QuadKey("032010110132031203");
+        assertThat(k.getZoom()).isEqualTo(18);
+        assertThat(k.getAsLong()).isEqualTo(15104861027L);
+    }
+
+    @Test
+    public void fromStringThenZoomOut()
+    {
+        final QuadKey k = new QuadKey("032010110132031203");
+        k.setZoom(12);
+        assertThat(k.getAsString()).isEqualTo("032010110132");
+        assertThat(k).isEqualTo(new QuadKey(coordinate1, 12));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void fromStringInvalidDigit()
+    {
+        new QuadKey("0324");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void fromStringEmpty()
+    {
+        new QuadKey("");
+    }
 }

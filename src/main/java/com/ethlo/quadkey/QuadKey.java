@@ -43,16 +43,64 @@ public class QuadKey
         this.quadKey = coordinate2QuadKey(coordinate, zoom);
     }
 
+    /**
+     * Create a quadkey from its 64-bit integer form at {@link #MAX_ZOOM}.
+     *
+     * @param quadInt The integer form, as returned by {@link #getAsLong()} for a quadkey at {@link #MAX_ZOOM}
+     * @deprecated The integer form does not say which zoom level it is at. Use {@link #QuadKey(long, int)}.
+     */
+    @Deprecated
     public QuadKey(long quadInt)
     {
+        this(quadInt, MAX_ZOOM);
+    }
+
+    /**
+     * Create a quadkey from its 64-bit integer form.
+     *
+     * @param quadInt The integer form, as returned by {@link #getAsLong()}
+     * @param zoom    The zoom level the integer form is at, from 1 to {@link #MAX_ZOOM}
+     */
+    public QuadKey(long quadInt, int zoom)
+    {
+        validateZoom(zoom);
+        if ((quadInt >>> (zoom * 2)) != 0)
+        {
+            throw new IllegalArgumentException("Value " + quadInt + " has more than " + zoom + " zoom levels");
+        }
+        this.zoom = zoom;
         this.quadInt = quadInt;
         this.quadKey = quadInt2String(quadInt, zoom);
     }
 
+    /**
+     * Create a quadkey from its string form, one digit from 0 to 3 per zoom level.
+     *
+     * @param quadKey The string form, as returned by {@link #getAsString()}
+     */
     public QuadKey(String quadKey)
     {
+        Objects.requireNonNull(quadKey, "quadKey cannot be null");
+        validateZoom(quadKey.length());
+        for (int i = 0; i < quadKey.length(); i++)
+        {
+            final char c = quadKey.charAt(i);
+            if (c < '0' || c > '3')
+            {
+                throw new IllegalArgumentException("Invalid character '" + c + "' at position " + i + " in quadkey " + quadKey);
+            }
+        }
+        this.zoom = quadKey.length();
         this.quadInt = quadKey2QuadInt(quadKey);
         this.quadKey = quadKey;
+    }
+
+    private static void validateZoom(int zoom)
+    {
+        if (zoom < 1 || zoom > MAX_ZOOM)
+        {
+            throw new IllegalArgumentException("Zoom level must be from 1 to " + MAX_ZOOM + ", was " + zoom);
+        }
     }
 
     public int getZoom()
