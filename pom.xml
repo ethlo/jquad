@@ -54,6 +54,66 @@
                 <additionalparam>-Xdoclint:none</additionalparam>
             </properties>
         </profile>
+        <!-- mvn -Preadme process-resources: regenerates README.md from src/site/README.md and the samples in
+             src/test/java/samples. Needs Java 17 and Maven 3.9 for source-extractor-maven-plugin. -->
+        <profile>
+            <id>readme</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.ethlo.documentation</groupId>
+                        <artifactId>source-extractor-maven-plugin</artifactId>
+                        <version>0.5.0</version>
+                        <configuration>
+                            <failOnEmpty>true</failOnEmpty>
+                            <sources>
+                                <source>
+                                    <directory>src/test/java/samples</directory>
+                                    <name>samples</name>
+                                </source>
+                            </sources>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>extract</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>readme</id>
+                                <phase>process-resources</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.basedir}</outputDirectory>
+                                    <!-- The Spring Boot parent only filters @...@ -->
+                                    <useDefaultDelimiters>false</useDefaultDelimiters>
+                                    <delimiters>
+                                        <delimiter>${*}</delimiter>
+                                    </delimiters>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/src/site</directory>
+                                            <filtering>true</filtering>
+                                            <includes>
+                                                <include>README.md</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
     <build>
         <plugins>
@@ -70,6 +130,16 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.1</version>
+                <configuration>
+                    <includes>
+                        <!-- The defaults, plus the README samples -->
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                        <include>**/*Samples.java</include>
+                    </includes>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
