@@ -65,23 +65,23 @@ public record BoundingBox(Coordinate southWest, Coordinate northEast)
         }
 
         // Bounding box of a spherical cap, after J. P. Matuschek, "Finding Points Within a Distance of a
-        // Latitude/Longitude Using Bounding Coordinates"
+        // Latitude/Longitude Using Bounding Coordinates". The edges are offsets from the center in degrees, so the
+        // center is always inside, also for a distance of 0.
         final double angle = meters / EARTH_RADIUS;
-        final double lat = Math.toRadians(center.lat());
-        final double south = lat - angle;
-        final double north = lat + angle;
-        if (south <= -Math.PI / 2 || north >= Math.PI / 2)
+        final double deltaLat = Math.toDegrees(angle);
+        final double south = center.lat() - deltaLat;
+        final double north = center.lat() + deltaLat;
+        final double ratio = Math.sin(angle) / Math.cos(Math.toRadians(center.lat()));
+        if (south <= -90 || north >= 90 || ratio >= 1)
         {
             // A pole is inside the circle, so every longitude is
-            return new BoundingBox(
-                    new Coordinate(Math.toDegrees(Math.max(south, -Math.PI / 2)), -180),
-                    new Coordinate(Math.toDegrees(Math.min(north, Math.PI / 2)), 180));
+            return new BoundingBox(new Coordinate(Math.max(south, -90), -180), new Coordinate(Math.min(north, 90), 180));
         }
 
-        final double deltaLon = Math.toDegrees(Math.asin(Math.sin(angle) / Math.cos(lat)));
+        final double deltaLon = Math.toDegrees(Math.asin(ratio));
         final double west = wrap(center.lon() - deltaLon);
         final double east = wrap(center.lon() + deltaLon);
-        return new BoundingBox(new Coordinate(Math.toDegrees(south), west), new Coordinate(Math.toDegrees(north), east));
+        return new BoundingBox(new Coordinate(south, west), new Coordinate(north, east));
     }
 
     private static double wrap(double lon)

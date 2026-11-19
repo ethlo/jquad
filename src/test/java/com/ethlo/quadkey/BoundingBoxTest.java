@@ -24,6 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
+import java.util.Random;
+
 import org.junit.jupiter.api.Test;
 
 class BoundingBoxTest
@@ -57,6 +59,22 @@ class BoundingBoxTest
         assertThat(box.contains(new Coordinate(center.lat(), center.lon() - dLon))).isTrue();
         assertThat(box.contains(new Coordinate(center.lat() + 2 * dLat, center.lon()))).isFalse();
         assertThat(box.crossesAntimeridian()).isFalse();
+    }
+
+    @Test
+    void aroundContainsItsCenter()
+    {
+        // Also for a distance of 0, where converting the latitude to radians and back used to move both edges
+        final Coordinate oslo = new Coordinate(59.9139, 10.7522);
+        assertThat(BoundingBox.around(oslo, 0).contains(oslo)).isTrue();
+
+        final Random random = new Random(1);
+        for (int i = 0; i < 100_000; i++)
+        {
+            final Coordinate center = new Coordinate(random.nextDouble() * 180 - 90, random.nextDouble() * 360 - 180);
+            final double meters = i % 2 == 0 ? 0 : random.nextDouble() * 1_000_000;
+            assertThat(BoundingBox.around(center, meters).contains(center)).as("%s, %s m", center, meters).isTrue();
+        }
     }
 
     @Test
