@@ -4,14 +4,14 @@ package com.ethlo.quadkey;
  * #%L
  * jquad
  * %%
- * Copyright (C) 2018 - 2019 Morten Haraldsen (ethlo)
+ * Copyright (C) 2018 - 2026 Morten Haraldsen (ethlo)
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,55 +20,23 @@ package com.ethlo.quadkey;
  * #L%
  */
 
-import java.util.Objects;
-
-public class Coordinate
+/**
+ * A WGS 84 position in decimal degrees.
+ *
+ * @param lat latitude, from -90 to 90
+ * @param lon longitude, from -180 to 180
+ */
+public record Coordinate(double lat, double lon)
 {
-    private final double lat;
-    private final double lon;
-
-    public Coordinate(double lat, double lon)
+    public Coordinate
     {
-        Assert.isTrue(lat <= 90.0, "Latitude must be less or equal to 180.0, was " + lat);
-        Assert.isTrue(lat >= -90.0, "Latitude must be greater or equal to -180.0, was " + lat);
-        Assert.isTrue(lon <= 180.0, "Longitude must be less or equal to 90.0, was " + lon);
-        Assert.isTrue(lon >= -180.0, "Longitude must be greater or equal to -90.0, was " + lon);
-
-
-        this.lat = lat;
-        this.lon = lon;
-    }
-
-    public double getLat()
-    {
-        return lat;
-    }
-
-    public double getLon()
-    {
-        return lon;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(lat, lon);
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (obj instanceof Coordinate)
+        if (!(lat >= -90 && lat <= 90))
         {
-            final Coordinate b = (Coordinate) obj;
-            return Objects.equals(lat, b.lat) && Objects.equals(lon, b.lon);
+            throw new IllegalArgumentException("Latitude must be from -90 to 90, was " + lat);
         }
-        return false;
-    }
-
-    @Override
-    public String toString()
-    {
-        return "Coordinate [lat=" + lat + ", lon=" + lon + "]";
+        if (!(lon >= -180 && lon <= 180))
+        {
+            throw new IllegalArgumentException("Longitude must be from -180 to 180, was " + lon);
+        }
     }
 }
