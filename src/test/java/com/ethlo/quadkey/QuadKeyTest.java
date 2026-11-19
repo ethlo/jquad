@@ -4,7 +4,7 @@ package com.ethlo.quadkey;
  * #%L
  * jquad
  * %%
- * Copyright (C) 2018 - 2019 Morten Haraldsen (ethlo)
+ * Copyright (C) 2018 - 2026 Morten Haraldsen (ethlo)
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,178 +21,155 @@ package com.ethlo.quadkey;
  */
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
-import org.assertj.core.data.Percentage;
-import org.junit.Test;
+import java.util.List;
 
-public class QuadKeyTest
+import org.junit.jupiter.api.Test;
+
+class QuadKeyTest
 {
-    private final Coordinate coordinate1 = new Coordinate(40.757678985595703, -73.969558715820312);
-    private final Coordinate coordinate2 = new Coordinate(-44.902066, 168.091782);
-
-    private final long quadInt1 = 1013670064444553679L;
+    private static final Coordinate TIMES_SQUARE = new Coordinate(40.757678985595703, -73.969558715820312);
+    private static final Coordinate QUEENSTOWN = new Coordinate(-44.902066, 168.091782);
 
     @Test
-    public void quadInt2Coordinate()
+    void bingExample()
     {
-        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
-        final Coordinate coord = k.getAsCoordinate();
-
-        final Percentage deviation = Percentage.withPercentage(0.000001D);
-        assertThat(coord.getLat()).isCloseTo(coordinate1.getLat(), deviation);
-        assertThat(coord.getLon()).isCloseTo(coordinate1.getLon(), deviation);
+        // From the Bing Maps tile system documentation: tile (3, 5) at level 3 has quadkey 213
+        assertThat(QuadKey.ofTile(3, 5, 3)).hasToString("213");
+        final QuadKey parsed = QuadKey.parse("213");
+        assertThat(parsed.tileX()).isEqualTo(3);
+        assertThat(parsed.tileY()).isEqualTo(5);
+        assertThat(parsed.zoom()).isEqualTo(3);
     }
 
     @Test
-    public void coordinate2QuadInt()
+    void knownValues()
     {
-        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
-        assertThat(k.getAsLong()).isEqualTo(quadInt1);
-    }
-
-
-    @Test
-    public void coordinate2QuadKey()
-    {
-        QuadKey k = new QuadKey(coordinate1, 16);
-        String quadKey1 = "0320101101320312032222203213033";
-        assertThat(k.getAsString()).isEqualTo(quadKey1.substring(0, 16));
-    }
-
-
-    @Test
-    public void quadKey2QuadInt()
-    {
-        QuadKey k = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
-        assertThat(k.getAsLong()).isEqualTo(quadInt1);
+        assertThat(QuadKey.of(TIMES_SQUARE, QuadKey.MAX_ZOOM).toLong()).isEqualTo(1013670064444553679L);
+        assertThat(QuadKey.of(TIMES_SQUARE, QuadKey.MAX_ZOOM)).hasToString("0320101101320312032222203213033");
+        assertThat(QuadKey.of(TIMES_SQUARE, 16)).hasToString("0320101101320312");
     }
 
     @Test
-    public void containsChild()
+    void roundTrips()
     {
-        QuadKey k1 = new QuadKey(coordinate1, 10);
-        QuadKey k2 = new QuadKey(coordinate1, 14);
-        assertTrue(k1.contains(k2.getAsCoordinate()));
+        final QuadKey key = QuadKey.of(QUEENSTOWN, 23);
+        assertThat(QuadKey.parse(key.toString())).isEqualTo(key);
+        assertThat(QuadKey.fromLong(key.toLong(), 23)).isEqualTo(key);
+        assertThat(QuadKey.ofTile(key.tileX(), key.tileY(), 23)).isEqualTo(key);
     }
 
     @Test
-    public void isParent()
+    void equalityIncludesTheZoomLevel()
     {
-        QuadKey k1 = new QuadKey(coordinate1, 10);
-        QuadKey k2 = new QuadKey(coordinate1, 11);
-        assertTrue(k1.isParentOf(k2));
+        // Same integer form, different tiles
+        assertThat(QuadKey.parse("0").toLong()).isEqualTo(QuadKey.parse("00").toLong());
+        assertThat(QuadKey.parse("0")).isNotEqualTo(QuadKey.parse("00"));
+        assertThat(QuadKey.parse("0").hashCode()).isNotEqualTo(QuadKey.parse("00").hashCode());
     }
 
     @Test
-    public void setZoom()
+    void rejectsInvalidInput()
     {
-        QuadKey k1 = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
-        QuadKey k2 = new QuadKey(coordinate1, QuadKey.MAX_ZOOM);
-        k2.setZoom(10);
-        assertThat(k2.getAsString().length()).isEqualTo(10);
-        assertThat(k1).isNotEqualTo(k2);
+        assertThatThrownBy(() -> QuadKey.parse("0324")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("'4' at position 3");
+        assertThatThrownBy(() -> QuadKey.parse("")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.parse("0".repeat(32))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.fromLong(QuadKey.of(TIMES_SQUARE, 20).toLong(), 18)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.fromLong(-1, 31)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.ofTile(8, 0, 3)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.of(TIMES_SQUARE, 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.of(TIMES_SQUARE, 32)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    public void setInvalidZoom()
+    void hierarchy()
     {
-        QuadKey k = new QuadKey(coordinate1, 10);
-        try
-        {
-            k.setZoom(11);
-            fail("Exception not thrown");
-        } catch (IllegalArgumentException e)
-        {
-            assertTrue(true);
-        }
+        final QuadKey key = QuadKey.parse("0320101101");
+        assertThat(key.parent()).hasToString("032010110");
+        assertThat(key.atZoom(4)).hasToString("0320");
+        assertThat(key.atZoom(10)).isEqualTo(key);
+        assertThat(key.children()).extracting(QuadKey::toString)
+                .containsExactly("03201011010", "03201011011", "03201011012", "03201011013");
+        assertThat(key.children()).allSatisfy(child -> assertThat(child.parent()).isEqualTo(key));
+        assertThatThrownBy(() -> QuadKey.parse("1").parent()).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> key.atZoom(11)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> QuadKey.of(TIMES_SQUARE, QuadKey.MAX_ZOOM).children()).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
-    public void quadKeyContains1()
+    void containsTiles()
     {
-        final Coordinate other = new Coordinate(40.756800, -73.970411);
-        QuadKey k = new QuadKey(coordinate1, 16);
-        assertTrue(k.contains(other));
+        final QuadKey key = QuadKey.parse("0320101101");
+        assertThat(key.contains(key)).isTrue();
+        assertThat(key.contains(QuadKey.parse("03201011012"))).isTrue();
+        assertThat(key.contains(QuadKey.parse("032010110"))).isFalse();
+        assertThat(key.contains(QuadKey.parse("0320101102"))).isFalse();
     }
 
     @Test
-    public void quadKeyNotContains1()
+    void descendantsFormOneRange()
     {
-        final Coordinate other = new Coordinate(40.759740, -73.965454);
-        QuadKey k = new QuadKey(coordinate1, 16);
-        assertFalse(k.contains(other));
+        final QuadKey key = QuadKey.of(TIMES_SQUARE, 12);
+        final long first = key.firstDescendant(QuadKey.MAX_ZOOM).toLong();
+        final long last = key.lastDescendant(QuadKey.MAX_ZOOM).toLong();
+        final long inside = QuadKey.of(TIMES_SQUARE, QuadKey.MAX_ZOOM).toLong();
+        assertThat(inside).isBetween(first, last);
+        assertThat(key.contains(QuadKey.fromLong(first, QuadKey.MAX_ZOOM))).isTrue();
+        assertThat(key.contains(QuadKey.fromLong(last, QuadKey.MAX_ZOOM))).isTrue();
+        assertThat(key.contains(QuadKey.fromLong(first - 1, QuadKey.MAX_ZOOM))).isFalse();
+        assertThat(key.contains(QuadKey.fromLong(last + 1, QuadKey.MAX_ZOOM))).isFalse();
+        assertThat(key.firstDescendant(12)).isEqualTo(key);
+        assertThat(key.lastDescendant(12)).isEqualTo(key);
+        assertThat(QuadKey.parse("3").lastDescendant(QuadKey.MAX_ZOOM)).hasToString("3".repeat(31));
     }
 
     @Test
-    public void quadKeyContains2()
+    void containsCoordinates()
     {
-        final Coordinate other = new Coordinate(-44.900874, 168.094146);
-        QuadKey k = new QuadKey(coordinate2, 16);
-        assertTrue(k.contains(other));
+        assertThat(QuadKey.of(TIMES_SQUARE, 16).contains(new Coordinate(40.756800, -73.970411))).isTrue();
+        assertThat(QuadKey.of(TIMES_SQUARE, 16).contains(new Coordinate(40.759740, -73.965454))).isFalse();
+        assertThat(QuadKey.of(QUEENSTOWN, 16).contains(new Coordinate(-44.900874, 168.094146))).isTrue();
+        assertThat(QuadKey.of(QUEENSTOWN, 16).contains(new Coordinate(-44.902303, 168.098953))).isFalse();
     }
 
     @Test
-    public void quadKeyNotContains2()
+    void edgePositionIsInExactlyOneTile()
     {
-        final Coordinate other = new Coordinate(-44.902303, 168.098953);
-        QuadKey k = new QuadKey(coordinate2, 16);
-        assertFalse(k.contains(other));
+        final QuadKey west = QuadKey.of(TIMES_SQUARE, 10);
+        final QuadKey east = QuadKey.ofTile(west.tileX() + 1, west.tileY(), 10);
+        final BoundingBox box = west.boundingBox();
+        final Coordinate onEdge = new Coordinate((box.southWest().lat() + box.northEast().lat()) / 2, box.northEast().lon());
+        assertThat(List.of(west.contains(onEdge), east.contains(onEdge))).containsExactlyInAnyOrder(true, false);
+        assertThat(east.contains(onEdge)).isTrue();
     }
 
     @Test
-    public void fromLongWithZoom()
+    void boundingBoxAndCenter()
     {
-        final QuadKey k = new QuadKey(coordinate1, 18);
-        final QuadKey copy = new QuadKey(k.getAsLong(), 18);
-        assertThat(copy.getZoom()).isEqualTo(18);
-        assertThat(copy.getAsString()).isEqualTo(k.getAsString());
-        assertThat(copy).isEqualTo(k);
-    }
+        final QuadKey key = QuadKey.of(TIMES_SQUARE, 12);
+        final BoundingBox box = key.boundingBox();
+        assertThat(box.contains(TIMES_SQUARE)).isTrue();
+        assertThat(box.contains(key.center())).isTrue();
+        assertThat(key.parent().boundingBox().contains(box.southWest())).isTrue();
+        assertThat(key.parent().boundingBox().contains(box.northEast())).isTrue();
+        assertThat(QuadKey.of(key.center(), 12)).isEqualTo(key);
 
-    @SuppressWarnings("deprecation")
-    @Test
-    public void fromLongAtMaxZoom()
-    {
-        final QuadKey k = new QuadKey(quadInt1);
-        assertThat(k.getZoom()).isEqualTo(QuadKey.MAX_ZOOM);
-        assertThat(k.getAsString()).isEqualTo(new QuadKey(coordinate1, QuadKey.MAX_ZOOM).getAsString());
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void fromLongTooManyLevels()
-    {
-        new QuadKey(quadInt1, 18);
+        final Coordinate center = QuadKey.of(TIMES_SQUARE, QuadKey.MAX_ZOOM).center();
+        assertThat(center.lat()).isCloseTo(TIMES_SQUARE.lat(), within(1e-7));
+        assertThat(center.lon()).isCloseTo(TIMES_SQUARE.lon(), within(1e-7));
     }
 
     @Test
-    public void fromString()
+    void edgesOfTheMap()
     {
-        final QuadKey k = new QuadKey("032010110132031203");
-        assertThat(k.getZoom()).isEqualTo(18);
-        assertThat(k.getAsLong()).isEqualTo(15104861027L);
-    }
-
-    @Test
-    public void fromStringThenZoomOut()
-    {
-        final QuadKey k = new QuadKey("032010110132031203");
-        k.setZoom(12);
-        assertThat(k.getAsString()).isEqualTo("032010110132");
-        assertThat(k).isEqualTo(new QuadKey(coordinate1, 12));
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void fromStringInvalidDigit()
-    {
-        new QuadKey("0324");
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void fromStringEmpty()
-    {
-        new QuadKey("");
+        // Beyond the Mercator limit, positions go to the top and bottom rows
+        assertThat(QuadKey.of(89.9, 0, 3).tileY()).isZero();
+        assertThat(QuadKey.of(-89.9, 0, 3).tileY()).isEqualTo(7);
+        // Longitude 180 is in the last column, -180 in the first
+        assertThat(QuadKey.of(0, 180, 3).tileX()).isEqualTo(7);
+        assertThat(QuadKey.of(0, -180, 3).tileX()).isZero();
+        assertThat(QuadKey.parse("0").boundingBox().northEast().lat()).isCloseTo(QuadKey.MAX_LATITUDE, within(1e-9));
     }
 }

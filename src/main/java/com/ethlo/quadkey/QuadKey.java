@@ -4,7 +4,7 @@ package com.ethlo.quadkey;
  * #%L
  * jquad
  * %%
- * Copyright (C) 2018 - 2019 Morten Haraldsen (ethlo)
+ * Copyright (C) 2018 - 2026 Morten Haraldsen (ethlo)
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,79 +20,297 @@ package com.ethlo.quadkey;
  * #L%
  */
 
+import java.util.List;
 import java.util.Objects;
 
-public class QuadKey
+/**
+ * A tile in the <a href="https://learn.microsoft.com/en-us/bingmaps/articles/bing-maps-tile-system">Bing Maps tile
+ * system</a>: a square of the Web Mercator map at a zoom level from 1 to {@link #MAX_ZOOM}.
+ *
+ * <p>A quadkey has a string form, one digit from 0 to 3 per zoom level ({@code "0320101101"}), and a 64-bit integer
+ * form ({@link #toLong()}). The integer form does not record the zoom level, so it is always read back together with
+ * one ({@link #fromLong(long, int)}). The keys of all tiles inside a tile form one contiguous integer range at any
+ * deeper zoom level ({@link #firstDescendant(int)}, {@link #lastDescendant(int)}), which makes it a good database key
+ * for area lookups.</p>
+ *
+ * <p>Instances are immutable. Two quadkeys are equal when they have the same zoom level and the same tile.</p>
+ */
+public final class QuadKey
 {
+    /**
+     * The deepest zoom level: 31 levels of two bits each fit in a {@code long}
+     */
     public static final int MAX_ZOOM = 31;
-    private static final double MAX_LONGITUDE = 180.0;
 
-    /* (2*atan(exp(M_PI))*180.0/M_PI - 90.0) */
-    private static final double MAX_LATITUDE = 85.05112877980659;
-    private static final double MIN_LONGITUDE = -MAX_LONGITUDE;
-    private static final double MIN_LATITUDE = -MAX_LATITUDE;
+    /**
+     * The northernmost latitude on the Web Mercator map. Positions further north or south are placed in the tiles
+     * at the edge of the map.
+     */
+    public static final double MAX_LATITUDE = 85.05112877980659;
 
-    private int zoom;
-    private long quadInt;
-    private String quadKey;
+    private final long bits;
+    private final int zoom;
 
-    public QuadKey(Coordinate coordinate, int zoom)
+    private QuadKey(long bits, int zoom)
     {
+        this.bits = bits;
         this.zoom = zoom;
-        this.quadInt = coordinate2QuadInt(coordinate, zoom);
-        this.quadKey = coordinate2QuadKey(coordinate, zoom);
     }
 
     /**
-     * Create a quadkey from its 64-bit integer form at {@link #MAX_ZOOM}.
-     *
-     * @param quadInt The integer form, as returned by {@link #getAsLong()} for a quadkey at {@link #MAX_ZOOM}
-     * @deprecated The integer form does not say which zoom level it is at. Use {@link #QuadKey(long, int)}.
+     * @param coordinate the position
+     * @param zoom       the zoom level, from 1 to {@link #MAX_ZOOM}
+     * @return the tile that contains the position at the given zoom level
      */
-    @Deprecated
-    public QuadKey(long quadInt)
+    public static QuadKey of(Coordinate coordinate, int zoom)
     {
-        this(quadInt, MAX_ZOOM);
+        Objects.requireNonNull(coordinate, "coordinate cannot be null");
+        validateZoom(zoom);
+        final double lat = Math.max(-MAX_LATITUDE, Math.min(MAX_LATITUDE, coordinate.lat()));
+        final double sinLat = Math.sin(Math.toRadians(lat));
+        final double fx = (coordinate.lon() + 180) / 360;
+        final double fy = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
+        final long size = 1L << zoom;
+        final long x = Math.min(size - 1, Math.max(0, (long) Math.floor(fx * size)));
+        final long y = Math.min(size - 1, Math.max(0, (long) Math.floor(fy * size)));
+        return new QuadKey(interleave(x, y), zoom);
     }
 
     /**
-     * Create a quadkey from its 64-bit integer form.
-     *
-     * @param quadInt The integer form, as returned by {@link #getAsLong()}
-     * @param zoom    The zoom level the integer form is at, from 1 to {@link #MAX_ZOOM}
+     * @param lat  latitude, from -90 to 90
+     * @param lon  longitude, from -180 to 180
+     * @param zoom the zoom level, from 1 to {@link #MAX_ZOOM}
+     * @return the tile that contains the position at the given zoom level
      */
-    public QuadKey(long quadInt, int zoom)
+    public static QuadKey of(double lat, double lon, int zoom)
+    {
+        return of(new Coordinate(lat, lon), zoom);
+    }
+
+    /**
+     * @param x    the tile column, from 0 (west) to 2<sup>zoom</sup> - 1
+     * @param y    the tile row, from 0 (north) to 2<sup>zoom</sup> - 1
+     * @param zoom the zoom level, from 1 to {@link #MAX_ZOOM}
+     * @return the tile
+     */
+    public static QuadKey ofTile(long x, long y, int zoom)
     {
         validateZoom(zoom);
-        if ((quadInt >>> (zoom * 2)) != 0)
+        final long size = 1L << zoom;
+        if (x < 0 || x >= size || y < 0 || y >= size)
         {
-            throw new IllegalArgumentException("Value " + quadInt + " has more than " + zoom + " zoom levels");
+            throw new IllegalArgumentException("Tile (" + x + ", " + y + ") is outside zoom level " + zoom + ", which has " + size + " tiles in each direction");
         }
-        this.zoom = zoom;
-        this.quadInt = quadInt;
-        this.quadKey = quadInt2String(quadInt, zoom);
+        return new QuadKey(interleave(x, y), zoom);
     }
 
     /**
-     * Create a quadkey from its string form, one digit from 0 to 3 per zoom level.
-     *
-     * @param quadKey The string form, as returned by {@link #getAsString()}
+     * @param quadKey the string form, one digit from 0 to 3 per zoom level
+     * @return the tile
      */
-    public QuadKey(String quadKey)
+    public static QuadKey parse(String quadKey)
     {
         Objects.requireNonNull(quadKey, "quadKey cannot be null");
         validateZoom(quadKey.length());
+        long bits = 0;
         for (int i = 0; i < quadKey.length(); i++)
         {
             final char c = quadKey.charAt(i);
             if (c < '0' || c > '3')
             {
-                throw new IllegalArgumentException("Invalid character '" + c + "' at position " + i + " in quadkey " + quadKey);
+                throw new IllegalArgumentException("Invalid character '" + c + "' at position " + i + " in quadkey '" + quadKey + "'");
             }
+            bits = (bits << 2) | (c - '0');
         }
-        this.zoom = quadKey.length();
-        this.quadInt = quadKey2QuadInt(quadKey);
-        this.quadKey = quadKey;
+        return new QuadKey(bits, quadKey.length());
+    }
+
+    /**
+     * @param bits the integer form, as returned by {@link #toLong()}
+     * @param zoom the zoom level of the integer form, from 1 to {@link #MAX_ZOOM}
+     * @return the tile
+     */
+    public static QuadKey fromLong(long bits, int zoom)
+    {
+        validateZoom(zoom);
+        if (bits < 0 || (bits >>> (2 * zoom)) != 0)
+        {
+            throw new IllegalArgumentException("Value " + bits + " is not a quadkey at zoom level " + zoom);
+        }
+        return new QuadKey(bits, zoom);
+    }
+
+    /**
+     * @return the zoom level, from 1 to {@link #MAX_ZOOM}
+     */
+    public int zoom()
+    {
+        return zoom;
+    }
+
+    /**
+     * @return the integer form: two bits per zoom level, with the first level in the highest bits used
+     */
+    public long toLong()
+    {
+        return bits;
+    }
+
+    /**
+     * @return the tile column, from 0 (west) to 2<sup>zoom</sup> - 1
+     */
+    public long tileX()
+    {
+        return deinterleave(bits);
+    }
+
+    /**
+     * @return the tile row, from 0 (north) to 2<sup>zoom</sup> - 1
+     */
+    public long tileY()
+    {
+        return deinterleave(bits >>> 1);
+    }
+
+    /**
+     * @return the tile one zoom level up, which contains this one
+     * @throws IllegalStateException at zoom level 1, which has no parent
+     */
+    public QuadKey parent()
+    {
+        if (zoom == 1)
+        {
+            throw new IllegalStateException("Zoom level 1 has no parent");
+        }
+        return atZoom(zoom - 1);
+    }
+
+    /**
+     * @param zoom a zoom level from 1 up to this quadkey's own
+     * @return the tile at that zoom level which contains this one
+     */
+    public QuadKey atZoom(int zoom)
+    {
+        validateZoom(zoom);
+        if (zoom > this.zoom)
+        {
+            throw new IllegalArgumentException("Zoom level " + zoom + " is deeper than this quadkey's " + this.zoom + "; use firstDescendant or children");
+        }
+        return new QuadKey(bits >>> (2 * (this.zoom - zoom)), zoom);
+    }
+
+    /**
+     * @return the four tiles one zoom level down, in key order: north-west, north-east, south-west, south-east
+     * @throws IllegalStateException at {@link #MAX_ZOOM}
+     */
+    public List<QuadKey> children()
+    {
+        if (zoom == MAX_ZOOM)
+        {
+            throw new IllegalStateException("Zoom level " + MAX_ZOOM + " has no children");
+        }
+        final long first = bits << 2;
+        return List.of(new QuadKey(first, zoom + 1), new QuadKey(first | 1, zoom + 1), new QuadKey(first | 2, zoom + 1), new QuadKey(first | 3, zoom + 1));
+    }
+
+    /**
+     * @param zoom a zoom level from this quadkey's own down to {@link #MAX_ZOOM}
+     * @return the tile inside this one with the lowest key at that zoom level
+     */
+    public QuadKey firstDescendant(int zoom)
+    {
+        return new QuadKey(bits << (2 * levelsDown(zoom)), zoom);
+    }
+
+    /**
+     * @param zoom a zoom level from this quadkey's own down to {@link #MAX_ZOOM}
+     * @return the tile inside this one with the highest key at that zoom level. Every key from
+     * {@link #firstDescendant(int)} to this one, inclusive, is inside this tile.
+     */
+    public QuadKey lastDescendant(int zoom)
+    {
+        final int shift = 2 * levelsDown(zoom);
+        return new QuadKey(((bits + 1) << shift) - 1, zoom);
+    }
+
+    private int levelsDown(int zoom)
+    {
+        validateZoom(zoom);
+        if (zoom < this.zoom)
+        {
+            throw new IllegalArgumentException("Zoom level " + zoom + " is above this quadkey's " + this.zoom + "; use atZoom");
+        }
+        return zoom - this.zoom;
+    }
+
+    /**
+     * @param other a quadkey
+     * @return whether the other tile is this one or inside it
+     */
+    public boolean contains(QuadKey other)
+    {
+        return other.zoom >= zoom && (other.bits >>> (2 * (other.zoom - zoom))) == bits;
+    }
+
+    /**
+     * Uses the same rule as {@link #of(Coordinate, int)}, so a position on the edge between two tiles is in exactly
+     * one of them: the one to the east, or to the south.
+     *
+     * @param coordinate a position
+     * @return whether the position is in this tile
+     */
+    public boolean contains(Coordinate coordinate)
+    {
+        return of(coordinate, zoom).bits == bits;
+    }
+
+    /**
+     * @return the area of the tile
+     */
+    public BoundingBox boundingBox()
+    {
+        final double size = 1L << zoom;
+        final long x = tileX();
+        final long y = tileY();
+        return new BoundingBox(
+                new Coordinate(latitude((y + 1) / size), longitude(x / size)),
+                new Coordinate(latitude(y / size), longitude((x + 1) / size)));
+    }
+
+    /**
+     * @return the center of the tile on the map. Because of the Mercator projection it is slightly north of the
+     * middle latitude in the northern hemisphere, and south of it in the southern.
+     */
+    public Coordinate center()
+    {
+        final double size = 1L << zoom;
+        return new Coordinate(latitude((tileY() + 0.5) / size), longitude((tileX() + 0.5) / size));
+    }
+
+    /**
+     * @return the string form, one digit from 0 to 3 per zoom level
+     */
+    @Override
+    public String toString()
+    {
+        final char[] digits = new char[zoom];
+        for (int i = 0; i < zoom; i++)
+        {
+            digits[i] = (char) ('0' + ((bits >>> (2 * (zoom - 1 - i))) & 3));
+        }
+        return new String(digits);
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        return o instanceof QuadKey other && other.bits == bits && other.zoom == zoom;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return 31 * Long.hashCode(bits) + zoom;
     }
 
     private static void validateZoom(int zoom)
@@ -103,248 +321,46 @@ public class QuadKey
         }
     }
 
-    public int getZoom()
+    private static double longitude(double fx)
     {
-        return zoom;
+        return fx * 360 - 180;
     }
 
-    public void setZoom(int zoom)
+    private static double latitude(double fy)
     {
-        if (zoom <= 0) throw new IllegalArgumentException("Zoom level invalid.");
-        if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
-        this.zoom = zoom;
-        this.quadKey = quadKey.substring(0, zoom);
-        this.quadInt = quadKey2QuadInt(quadKey);
-    }
-
-    public long getAsLong()
-    {
-        return quadInt;
-    }
-
-    public String getAsString()
-    {
-        return this.toString();
-    }
-
-    public Coordinate getAsCoordinate()
-    {
-        return quadInt2Coordinate(quadInt, zoom);
-    }
-
-    public BoundingRectangle getAsBoundingBox()
-    {
-        return tile2Bbox(quadInt, getZoom());
-    }
-
-    public BoundingRectangle getAsBoundingBox(int zoom)
-    {
-        if (zoom > getZoom()) throw new IllegalArgumentException("Can not zoom in further.");
-        return tile2Bbox(quadInt, zoom);
-    }
-
-    public boolean contains(Coordinate coordinate)
-    {
-        return getAsBoundingBox().contains(coordinate);
-    }
-
-    public boolean isParentOf(QuadKey other)
-    {
-        return other.getAsString().startsWith(quadKey);
-    }
-
-    @Override
-    public String toString()
-    {
-        return quadKey;
-    }
-
-    @Override
-    public boolean equals(Object o)
-    {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        QuadKey quadKey = (QuadKey) o;
-        return quadInt == quadKey.quadInt;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(quadInt);
+        return Math.toDegrees(Math.atan(Math.sinh(Math.PI * (1 - 2 * fy))));
     }
 
     /**
-     * decimal
-     * places   degrees          max-distance
-     * -------  -------          --------
-     * 0        1                111  km
-     * 1        0.1              11.1 km
-     * 2        0.01             1.11 km
-     * 3        0.001            111  m
-     * 4        0.0001           11.1 m
-     * 5        0.00001          1.11 m
-     * 6        0.000001         11.1 cm
-     * 7        0.0000001        1.11 cm
-     * 8        0.00000001       1.11 mm
-     *
-     * @param quadInt
-     * @return
+     * Spreads the bits of x to the even positions and those of y to the odd ones
      */
-    private static Coordinate quadInt2Coordinate(long quadInt, int zoom)
+    private static long interleave(long x, long y)
     {
-        final Point p = quadInt2Point(quadInt);
-        long x = p.getX();
-        long y = p.getY();
-        double xMin = -0.5 + (x * 1.0 / (1L << zoom));
-        double xMax = -0.5 + ((x + 1) * 1.0 / (1L << zoom));
-        double yMin = -0.5 + ((y + 1) * 1.0 / (1L << zoom));
-        double yMax = -0.5 + (y * 1.0 / (1L << zoom));
-
-        double lonMin = 360.0 * xMin;
-        double lonMax = 360.0 * xMax;
-
-        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
-        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
-
-        return new Coordinate((latMin + latMax) / 2D, (lonMin + lonMax) / 2D);
+        return spread(x) | (spread(y) << 1);
     }
 
-    private static String coordinate2QuadKey(Coordinate coordinate, int zoom)
+    private static long spread(long v)
     {
-        return quadInt2String(pointToQuadInt(coordinate2Point(coordinate, zoom)), zoom);
+        v &= 0xFFFFFFFFL;
+        v = (v | (v << 16)) & 0x0000FFFF0000FFFFL;
+        v = (v | (v << 8)) & 0x00FF00FF00FF00FFL;
+        v = (v | (v << 4)) & 0x0F0F0F0F0F0F0F0FL;
+        v = (v | (v << 2)) & 0x3333333333333333L;
+        v = (v | (v << 1)) & 0x5555555555555555L;
+        return v;
     }
 
-    private static long coordinate2QuadInt(Coordinate coordinate, int zoom)
+    /**
+     * Collects the even bits into the low 32 bits
+     */
+    private static long deinterleave(long v)
     {
-        final Point point = coordinate2Point(coordinate, zoom);
-        return pointToQuadInt(point);
-    }
-
-    private static BoundingRectangle tile2Bbox(long quadInt, int zoom)
-    {
-        final Range<Coordinate> r = tile2BboxScaled(1.0, 1.0, -0.5, -0.5, quadInt, zoom);
-
-        final double xMin = r.getLower().getLat();
-        final double yMin = r.getLower().getLon();
-        final double xMmax = r.getUpper().getLat();
-        final double yMax = r.getUpper().getLon();
-
-        double lonMin = 360.0 * xMin;
-        double lonMax = 360.0 * xMmax;
-
-        double latMin = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMin))) / Math.PI;
-        double latMax = 90.0 - 360.0 * Math.atan(Math.exp(-2 * Math.PI * (-yMax))) / Math.PI;
-        return new BoundingRectangle(new Coordinate(latMin, lonMin), new Coordinate(latMax, lonMax));
-    }
-
-
-    private static String quadInt2String(long quadInt, int zoom)
-    {
-        StringBuilder str = new StringBuilder();
-        int n = zoom * 2;
-        for (int i = 2; i < n + 2; i += 2)
-        {
-            long charCode = (quadInt >> (n - i)) & 0b11;
-            str.append(charCode);
-        }
-        return str.toString();
-    }
-
-    private static long quadKey2QuadInt(String quadKey)
-    {
-        long quadInt = 0;
-        byte[] chars = quadKey.getBytes();
-        for (int i = 0; i < chars.length; i++)
-        {
-            int digit = chars[i] - 48;
-            quadInt = (quadInt << 2) | digit;
-        }
-        return quadInt;
-    }
-
-    private static long pointToQuadInt(Point point)
-    {
-        final long[] b =
-            {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL};
-        final long[] s =
-            {1, 2, 4, 8, 16};
-
-        long x = (point.getX() | (point.getX() << s[4])) & b[4];
-        long y = (point.getY() | (point.getY() << s[4])) & b[4];
-
-        x = (x | (x << s[3])) & b[3];
-        y = (y | (y << s[3])) & b[3];
-
-        x = (x | (x << s[2])) & b[2];
-        y = (y | (y << s[2])) & b[2];
-
-        x = (x | (x << s[1])) & b[1];
-        y = (y | (y << s[1])) & b[1];
-
-        x = (x | (x << s[0])) & b[0];
-        y = (y | (y << s[0])) & b[0];
-
-        return x | (y << 1);
-    }
-
-    private static Point quadInt2Point(long quadInt)
-    {
-        final long[] b =
-            {0x5555555555555555L, 0x3333333333333333L, 0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL, 0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL};
-        final int[] s =
-            {0, 1, 2, 4, 8, 16};
-
-        long x = quadInt;
-        long y = quadInt >> 1;
-
-        x = (x | (x >> s[0])) & b[0];
-        y = (y | (y >> s[0])) & b[0];
-
-        x = (x | (x >> s[1])) & b[1];
-        y = (y | (y >> s[1])) & b[1];
-
-        x = (x | (x >> s[2])) & b[2];
-        y = (y | (y >> s[2])) & b[2];
-
-        x = (x | (x >> s[3])) & b[3];
-        y = (y | (y >> s[3])) & b[3];
-
-        x = (x | (x >> s[4])) & b[4];
-        y = (y | (y >> s[4])) & b[4];
-
-        x = (x | (x >> s[5])) & b[5];
-        y = (y | (y >> s[5])) & b[5];
-
-        return new Point(x, y);
-    }
-
-    private static Point coordinate2Point(Coordinate coordinate, int zoom)
-    {
-        final double lon = Math.min(MAX_LONGITUDE, Math.max(MIN_LONGITUDE, coordinate.getLon()));
-        final double lat = Math.min(MAX_LATITUDE, Math.max(MIN_LATITUDE, coordinate.getLat()));
-
-        double fx = (lon + 180.0) / 360.0;
-        double sinlat = Math.sin(lat * Math.PI / 180.0);
-        double fy = 0.5 - Math.log((1 + sinlat) / (1 - sinlat)) / (4 * Math.PI);
-
-        long mapsize = (1 << zoom) & 0xFFFFFFFFL;
-        long x = ((long) Math.floor(fx * mapsize)) & 0xFFFFFFFFL;
-        long y = ((long) Math.floor(fy * mapsize)) & 0xFFFFFFFFL;
-        x = Math.min(mapsize - 1, Math.max(0, x));
-        y = Math.min(mapsize - 1, Math.max(0, y));
-        return new Point(x, y);
-    }
-
-    private static Range<Coordinate> tile2BboxScaled(double scaleX, double scaleY, double offsetX, double offsetY, long quadInt, int zoom)
-    {
-        final Point p = quadInt2Point(quadInt);
-        long x = p.getX();
-        long y = p.getY();
-        double xMin = offsetX + (x * 1.0 / (1L << zoom)) * scaleX;
-        double xMax = offsetX + ((x + 1) * 1.0 / (1L << zoom)) * scaleX;
-        double yMin = offsetY + ((y + 1) * 1.0 / (1L << zoom)) * scaleY;
-        double yMax = offsetY + (y * 1.0 / (1L << zoom)) * scaleY;
-        return new Range<>(new Coordinate(xMin, yMin), new Coordinate(xMax, yMax));
+        v &= 0x5555555555555555L;
+        v = (v | (v >>> 1)) & 0x3333333333333333L;
+        v = (v | (v >>> 2)) & 0x0F0F0F0F0F0F0F0FL;
+        v = (v | (v >>> 4)) & 0x00FF00FF00FF00FFL;
+        v = (v | (v >>> 8)) & 0x0000FFFF0000FFFFL;
+        v = (v | (v >>> 16)) & 0x00000000FFFFFFFFL;
+        return v;
     }
 }
